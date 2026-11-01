@@ -390,7 +390,7 @@ button.btn{background:none;color:var(--fg);font:inherit;font-size:13px;cursor:po
 <script>
 // loader
 let n=0;const cEl=document.getElementById('count');
-const t=setInterval(()=>{n+=Math.ceil(Math.random()*7);if(n>=100){n=100;clearInterval(t);setTimeout(()=>{document.getElementById('loader').classList.add('done');document.getElementById('hero').classList.add('on');document.fonts.ready.then(form)},300)}cEl.textContent=n},40);
+const t=setInterval(()=>{n+=Math.ceil(Math.random()*12)+4;if(n>=100){n=100;clearInterval(t);setTimeout(()=>{document.getElementById('loader').classList.add('done');document.getElementById('hero').classList.add('on');document.fonts.ready.then(form)},300)}cEl.textContent=n},40);
 
 // hero photo: show the placeholder until images/00_about/photo.jpg exists
 const ph=document.getElementById('ph'),phImg=ph.querySelector('img');
@@ -495,7 +495,10 @@ document.querySelectorAll('.btn,.mag').forEach(el=>{const at=e=>{const r=el.getB
 document.querySelectorAll('.mag,.btn,#contact h2 a').forEach(el=>{el.addEventListener('mousemove',e=>{const r=el.getBoundingClientRect();el.style.transform=`translate(${(e.clientX-r.left-r.width/2)*.35}px,${(e.clientY-r.top-r.height/2)*.35}px)`});el.addEventListener('mouseleave',()=>el.style.transform='')});
 
 // point cloud hero
-const cv=document.getElementById('cloud'),ctx=cv.getContext('2d');let W,H,pts=[],DPR=Math.min(devicePixelRatio,2);
+const cv=document.getElementById('cloud'),ctx=cv.getContext('2d');let W,H,pts=[],DPR=Math.min(devicePixelRatio,1.5);
+// the cloud only animates while the hero is on screen and no overlay covers it
+let heroSeen=true;new IntersectionObserver(es=>heroSeen=es[0].isIntersecting).observe(document.getElementById('hero'));
+const shade=[...Array(33)].map((_,i)=>{const g=i/32;return`rgb(${Math.round(60+195*g)},${Math.round(255-150*g)},${Math.round(120-80*g)})`});
 function size(){W=cv.width=innerWidth*DPR;H=cv.height=innerHeight*DPR;cv.style.width=innerWidth+'px';cv.style.height=innerHeight+'px'}
 function form(){size();const o=document.createElement('canvas'),g=o.getContext('2d');o.width=W;o.height=H;
  // name fits the left half on desktop, the band under the photo on mobile
@@ -508,15 +511,15 @@ function form(){size();const o=document.createElement('canvas'),g=o.getContext('
  for(let i=0;i<600;i++)np.push({tx:Math.random()*W,ty:Math.random()*H,x:Math.random()*W,y:Math.random()*H,vx:0,vy:0,h:Math.random(),dust:1});
  pts=np}
 addEventListener('resize',()=>{if(pts.length)form()});
-function draw(){ctx.clearRect(0,0,W,H);const px=mx*DPR,py=my*DPR,sc=scrollY/innerHeight;
+function draw(){requestAnimationFrame(draw);
+ if(!heroSeen||document.hidden||!V.hidden||!tour.hidden||!cvBox.hidden)return;
+ ctx.clearRect(0,0,W,H);const px=mx*DPR,py=my*DPR,sc=scrollY/innerHeight;
  for(const p of pts){const dx=p.x-px,dy=p.y-py,dd=dx*dx+dy*dy,R=(130*DPR)**2;
   if(dd<R){const f=(1-dd/R)*9;const a=Math.atan2(dy,dx);p.vx+=Math.cos(a)*f;p.vy+=Math.sin(a)*f}
   const ty=p.ty+(p.dust?0:sc*(p.h-.5)*900*DPR);
   p.vx+=(p.tx-p.x)*.012;p.vy+=(ty-p.y)*.012;p.vx*=.86;p.vy*=.86;p.x+=p.vx;p.y+=p.vy;
-  const g=p.y/H;ctx.fillStyle=p.dust?`rgba(242,239,233,${.12+p.h*.15})`:`rgb(${Math.round(60+195*g)},${Math.round(255-150*g)},${Math.round(120-80*g)})`;
-  const s=(p.dust?1:1.8)*DPR;ctx.fillRect(p.x,p.y,s,s)}
- requestAnimationFrame(draw)}
-size();draw();
+  ctx.fillStyle=p.dust?p.c||(p.c=`rgba(242,239,233,${.12+p.h*.15})`):shade[Math.max(0,Math.min(32,Math.round(p.y/H*32)))];
+  const s=(p.dust?1:1.8)*DPR;ctx.fillRect(p.x,p.y,s,s)}}
 
 // manifesto scrub
 const mt=document.getElementById('mtext');mt.innerHTML=mt.textContent.split(' ').map(w=>w.startsWith('*')||w.endsWith('*')||/\*/.test(w)?`<span class="a">${w.replace(/\*/g,'')}</span>`:`<span>${w}</span>`).join(' ');
@@ -538,7 +541,9 @@ function onScroll(){const y=scrollY,vh=innerHeight;
  const tr=time.getBoundingClientRect(),tp=Math.min(Math.max(-tr.top/(tr.height-vh),0),1);
  track.style.transform=`translateX(${-tp*(track.scrollWidth-innerWidth+innerWidth*.04)}px)`;
 }
-addEventListener('scroll',onScroll,{passive:true});onScroll();
+// at most one layout pass per frame, and none while a project covers the page
+let scrollQueued=false;
+addEventListener('scroll',()=>{if(scrollQueued||!V.hidden)return;scrollQueued=true;requestAnimationFrame(()=>{scrollQueued=false;onScroll()})},{passive:true});onScroll();
 
 // project viewer: #<id> opens it, so the browser's back button closes it instead of leaving the site
 const V=document.getElementById('viewer'),vb=V.querySelector('.v-boards'),vt=V.querySelector('.v-thumbs'),vc=V.querySelector('.v-count b'),zoom=document.getElementById('zoom');
@@ -550,9 +555,9 @@ function openProject(id){
  V.querySelector('.v-tags').innerHTML=p.tags.map(t=>`<span>${t}</span>`).join('');
  V.querySelector('.v-count span').textContent=pad(n);vc.textContent='01';
  vb.classList.toggle('grid',!!p.grid);
- vb.innerHTML=p.boards.map((b,k)=>`<figure><img src="images/${p.dir}/${pad(k+1)}.jpg" alt="${p.title}: ${b}" loading="${k<2?'eager':'lazy'}"><figcaption><span>${b}</span><span>${pad(k+1)} / ${pad(n)}</span></figcaption></figure>`).join('')
+ vb.innerHTML=p.boards.map((b,k)=>`<figure><img src="images/${p.dir}/${pad(k+1)}.jpg" alt="${p.title}: ${b}" loading="${k<2?'eager':'lazy'}" decoding="async"><figcaption><span>${b}</span><span>${pad(k+1)} / ${pad(n)}</span></figcaption></figure>`).join('')
   +`<a class="v-next" href="#${nx.id}"><small>Next project</small>${nx.title} →</a>`;
- vt.innerHTML=n>1?p.boards.map((b,k)=>`<button aria-label="Go to board ${k+1}: ${b}"><img src="images/${p.dir}/t${pad(k+1)}.jpg" alt=""></button>`).join(''):'';
+ vt.innerHTML=n>1?p.boards.map((b,k)=>`<button aria-label="Go to board ${k+1}: ${b}"><img src="images/${p.dir}/t${pad(k+1)}.jpg" alt="" loading="lazy" decoding="async"></button>`).join(''):'';
  const figs=[...vb.querySelectorAll('figure')],thumbs=[...vt.children];
  thumbs.forEach((t,k)=>t.onclick=()=>figs[k].scrollIntoView({behavior:'smooth'}));
  if(vio)vio.disconnect();
@@ -583,6 +588,7 @@ function closeTour(){tour.hidden=true;tourFrame.src='about:blank';c1.hidden=c2.h
 tour.querySelector('.tour-close').onclick=closeTour;
 addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!tour.hidden)closeTour();else if(!cvBox.hidden)closeCv();else if(!zoom.hidden)zoom.hidden=true;else if(!V.hidden)V.querySelector('.v-close').click()});
 route();
+size();draw();
 </script>
 </body>
 </html>
